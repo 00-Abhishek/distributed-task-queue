@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: queue
+      POSTGRES_PASSWORD: queue
+      POSTGRES_DB: jobs
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U queue -d jobs"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg2://queue:queue@db:5432/jobs
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+  worker:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg2://queue:queue@db:5432/jobs
+      WORKER_POLL_INTERVAL: "0.5"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python -m app.worker
+    deploy:
+      replicas: 2
+
+volumes:
+  pgdata:
